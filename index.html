@@ -5,76 +5,89 @@
 <title>Camp Attendance Scanner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body { font-family: Arial, sans-serif; background: #f4f6f8; margin:0; padding:20px; display:flex; flex-direction:column; align-items:center; }
-h2 { text-align:center; margin-bottom:20px; }
-#video { width: 100%; max-width: 400px; border: 2px solid #ccc; border-radius:12px; }
-#result { margin-top:20px; font-size:16px; font-weight:bold; }
-#attendeeInfo { margin-top:10px; padding:10px; border:1px solid #ccc; border-radius:8px; background:#fff; width:100%; max-width:400px; text-align:center; }
-#attendeeInfo.highlight { border-color: #28a745; background: #e1f7e7; }
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    background: #f4f6f8;
+}
+h2 {
+    text-align: center;
+    margin: 20px 0;
+}
+#reader {
+    width: 90%;
+    max-width: 400px;
+    height: 400px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+#status {
+    margin-top: 20px;
+    font-weight: bold;
+    color: green;
+    text-align: center;
+}
 </style>
 </head>
 <body>
-
 <h2>Camp Attendance Scanner</h2>
-<video id="video" autoplay></video>
-<div id="result">Scan a QR code...</div>
-<div id="attendeeInfo"></div>
+<div id="reader"></div>
+<div id="status">Requesting camera access...</div>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script>
+const readerDiv = document.getElementById("reader");
+const statusDiv = document.getElementById("status");
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqR1FoRQL3K_59LBkwOcpgr-jAmAmDonSNfpROKDyA8i-EmnvOwO3od3f0ZX4p3za2DQ/exec";
 
-const resultDiv = document.getElementById('result');
-const attendeeDiv = document.getElementById('attendeeInfo');
+// Callback when QR is successfully scanned
+function onScanSuccess(decodedText, decodedResult) {
+    statusDiv.textContent = `Scanned ID: ${decodedText}. Marking as present...`;
 
-function markPresent(id){
-  fetch(SCRIPT_URL + "?id=" + encodeURIComponent(id), {
-    method: "GET"
-  })
-  .then(res => res.json())
-  .then(data => {
-    if(data.found){
-      resultDiv.textContent = "✅ Attendee Found!";
-      attendeeDiv.innerHTML = `
-        Name: ${data.name} <br>
-        Age: ${data.age} <br>
-        Sex: ${data.sex} <br>
-        Church: ${data.church} <br>
-        Accommodation: ${data.accommodation} <br>
-        Contact: ${data.contact} <br>
-        Status: Present
-      `;
-      attendeeDiv.classList.add('highlight');
-    } else {
-      resultDiv.textContent = "❌ QR ID not found!";
-      attendeeDiv.innerHTML = "";
-      attendeeDiv.classList.remove('highlight');
-    }
-  })
-  .catch(err => {
-    resultDiv.textContent = "❌ Error fetching data";
-    console.error(err);
-  });
+    // JSONP request to Google Sheet
+    const script = document.createElement('script');
+    script.src = `${SCRIPT_URL}?callback=handleResponse&scannedID=${encodeURIComponent(decodedText)}`;
+    document.body.appendChild(script);
 }
 
-// Initialize QR scanner
-const html5QrCode = new Html5Qrcode("video");
-html5QrCode.start(
-  { facingMode: "environment" },
-  {
-    fps: 10,
-    qrbox: 250
-  },
-  (decodedText) => {
-    markPresent(decodedText);
-  },
-  (errorMessage) => {
-    // ignore scan errors
-  }
-).catch(err => {
-  resultDiv.textContent = "❌ Error accessing camera";
-  console.error(err);
-});
+// JSONP callback
+window.handleResponse = function(data){
+    if(data.status === "ok"){
+        statusDiv.textContent = "✅ Attendance marked!";
+    } else {
+        statusDiv.textContent = "❌ Error marking attendance: " + (data.message||"");
+    }
+}
+
+// Start camera and scanner immediately on page load
+function startScanner() {
+    Html5Qrcode.getCameras().then(cameras => {
+        if(cameras && cameras.length){
+            const cameraId = cameras[0].id; // use first available camera
+            const html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                cameraId,
+                { fps: 10, qrbox: 250 },
+                onScanSuccess
+            ).catch(err => {
+                statusDiv.textContent = "❌ Camera start error: " + err;
+            });
+        } else {
+            statusDiv.textContent = "❌ No camera found";
+        }
+    }).catch(err => {
+        statusDiv.textContent = "❌ Error getting cameras: " + err;
+    });
+}
+
+// Trigger scanner on load
+window.addEventListener("load", startScanner);
 </script>
 </body>
 </html>
